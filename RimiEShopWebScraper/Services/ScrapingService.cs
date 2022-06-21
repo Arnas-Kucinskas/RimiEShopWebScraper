@@ -1,5 +1,6 @@
 ﻿using HtmlAgilityPack;
 using RimiEShopWebScraper.Models;
+using RimiEShopWebScraper.Repository.Interfaces;
 using RimiEShopWebScraper.Services.Interfaces;
 using System;
 using System.Collections.Generic;
@@ -11,6 +12,7 @@ namespace RimiEShopWebScraper.Services
 {
     internal class ScrapingService : IScrapingService
     {
+        
         private string _baseUrl = "https://www.rimi.lt";
         private List<string> _baseCategories = new List<string>()
             {
@@ -29,42 +31,29 @@ namespace RimiEShopWebScraper.Services
                 "https://www.rimi.lt/e-parduotuve/lt/produktai/buitines-chemijos-ir-valymo-priemones/c/SH-16",
                 "https://www.rimi.lt/e-parduotuve/lt/produktai/namu-ukio-gyvunu-ir-laisvalaikio-prekes/c/SH-10"
             };
+        private readonly IProductsRepository _productsRepository;
+
         public int FailedCount { get; set; }
 
-        public ScrapingService()
+        public ScrapingService(IProductsRepository productsRepository)
         {
-
+            _productsRepository = productsRepository;
         }
 
         public async Task ScrapeEverything()
         {
-            var web = new HtmlWeb();
-            var doc = web.Load("https://www.rimi.lt/e-parduotuve/lt/produktai/vaisiai-darzoves-ir-geles/c/SH-15");
-
-            //var linkNodes = doc.DocumentNode.SelectNodes("//li[@class='product-grid__item']/div/div[@class='card__details']");
-
-
             var products = new Dictionary<long, Product>();
-
-
 
             foreach (var baseCategory in _baseCategories)
             {
                 ScrapeWholeBaseCategory(baseCategory, products);
             }
-            
-            foreach (var product in products)
-            {
-                Console.WriteLine($"Id: {product.Value.Id} Name: {product.Value.Name} Price: {product.Value.PriceMinorCurrency} SalePrice: {product.Value.PriceOnSaleMinorcurrency}");
-            }
 
-            var a = "";
+            await _productsRepository.BatchInsertProducts(products);
         }
 
         private void ScrapeWholeBaseCategory(string url, Dictionary<long, Product> products)
         {
-            //var web = new HtmlWeb();
-            //var doc = web.Load(baseCategory.url);
             var pageReader = new WebPageReader(url, _baseUrl);
 
             while (pageReader.SeekPage())
@@ -73,28 +62,15 @@ namespace RimiEShopWebScraper.Services
                 foreach (var node in linkNodes)
                 {
                     var product = new Product();
-                    long.TryParse(node.Attributes["data-product-code"].Value, out var productId);
 
-
-                    product.Id = productId;
-                    if (product.Id == 213328)
-                    {
-                        var a = "";
-                    }
-                    product.ImageUrl = _baseUrl + node.SelectSingleNode(".//a[contains(@class, 'card__url')]").Attributes["href"].Value;
-                    product.Name = node.SelectSingleNode(".//div[@class='card__details']/p[@class='card__name']").InnerText;
-                    product.ScrapeDate = DateOnly.FromDateTime(DateTime.Now);
+                    ParseProductBaselineInfo(node, product);
                     try
                     {
-                        //product.Category = baseCategory.productCategory;
-
-
                         if (!IsProductAvailable(node, product))
                         {
-                            products[product.Id] = product;
+                            products[product.ProductId] = product;
                             continue;
                         }
-                        
 
                         SetSaleType(node, product);
 
@@ -112,9 +88,7 @@ namespace RimiEShopWebScraper.Services
                                 break;
                         }
 
-                        //var xPAthNavigator = node.
-                        //var yhg = xPAthNavigator.Select("//p[@class='card__name']");
-                        products[product.Id] = product;
+                        products[product.ProductId] = product;
                     }
                     catch (Exception ex)
                     {
@@ -127,9 +101,17 @@ namespace RimiEShopWebScraper.Services
             
         }
 
+        private void ParseProductBaselineInfo(HtmlNode node, Product product)
+        {
+            long.TryParse(node.Attributes["data-product-code"].Value, out var productId);
+            product.ProductId = productId;
+            product.ImageUrl = _baseUrl + node.SelectSingleNode(".//a[contains(@class, 'card__url')]").Attributes["href"].Value;
+            product.Name = node.SelectSingleNode(".//div[@class='card__details']/p[@class='card__name']").InnerText;
+            product.ScrapeDate = DateTime.Now;
+        }
+
         private bool IsProductAvailable(HtmlNode node, Product product)
         {
-            //a[contains(@class, 'card__price-wrapper')]
             var productUnavailalbe = node.SelectSingleNode(".//div[@class='card__details']/div[@class='card__details-inner']/div[contains(@class, 'card__price-wrapper')]/p[@class='card__price-per']")?.InnerText;
             if (productUnavailalbe != null)
             {
@@ -145,7 +127,6 @@ namespace RimiEShopWebScraper.Services
             var saleMajorCurency = node.SelectSingleNode(".//div[@class='card__details']/div[@class='card__details-inner']/div[@class='card__price-wrapper -has-discount']/div[@class='price-tag card__price']/span").InnerText;
             var saleMinorCurency = node.SelectSingleNode(".//div[@class='card__details']/div[@class='card__details-inner']/div[@class='card__price-wrapper -has-discount']/div[@class='price-tag card__price']/div/sup").InnerText;
             var originalPrice = node.SelectSingleNode(".//div[@class='card__details']/div[@class='card__details-inner']/div[@class='card__price-wrapper -has-discount']/div/div[@class='old-price-tag card__old-price']/span").InnerText;
-            //var originalMinorCurency = "";
 
             long.TryParse(saleMajorCurency + saleMinorCurency, out var salePrice);
             product.PriceOnSaleMinorcurrency = salePrice;
@@ -191,10 +172,6 @@ namespace RimiEShopWebScraper.Services
             var symbolsToRemove = new char[] { ',', '€' };
             var priceAsString =  new string(originalPrice.Except(symbolsToRemove).ToArray());
             long.TryParse(priceAsString, out var price);
-            if (price == 0)
-            {
-                var a = "";
-            }
             return price;
         }
 
