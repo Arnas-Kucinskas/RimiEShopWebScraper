@@ -38,8 +38,14 @@ namespace RimiEShopWebScraper.Services
         public ScrapingService(IProductsRepository productsRepository)
         {
             _productsRepository = productsRepository;
+            var loggedIn = Login("admin", "admin");
         }
 
+        public bool Login(string username, string password)
+        {
+            return true;    
+        }
+        
         public async Task ScrapeEverything()
         {
             var products = new Dictionary<long, Product>();
