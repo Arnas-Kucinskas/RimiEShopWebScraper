@@ -6,6 +6,12 @@ using RimiEShopWebScraper.Services;
 using RimiEShopWebScraper.Services.Interfaces;
 
 
+//SAST check
+if(true)
+{
+    Console.WriteLine("hello");
+}
+
 IHost host = Host.CreateDefaultBuilder(args)
     .ConfigureServices(services =>
     {
